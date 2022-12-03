@@ -1,21 +1,23 @@
-﻿# grpc-dotnet via HTTP2 for Unity
+# grpc-dotnet via HTTP2 for Unity
 
 ## TODO
  - Verify timeout behavior.
  - Verify call cancellation for server/client streaming.
  - Verify behavior for server disconnection.
 
+***Note:** Pull requests improving coverarge of functionality are very welcome. But in any case, if you notice the lack of some features please open a ticket.*
+
 ## Introduction
 
-Important: This package requires to have the latest version of BestHTTP/2 by Tivadar György Nagy!
+**Important:** This package requires to have the latest version of [BestHTTP/2 by Tivadar György Nagy](https://assetstore.unity.com/packages/tools/network/best-http-2-155981)!
 
-Up to this point the only way to use gRPC with Unity was to use gRPC.Core. This implementation requires native platform-specific unmanaged libraries to support the HTTP2 communication and as of today is planned to be deprecated in May 2023.
+Up to this point the only way to use gRPC with Unity was to use gRPC.Core. This implementation requires native platform-specific unmanaged libraries to support the HTTP2 communication and as of today is [planned to be deprecated in May 2023](https://grpc.io/blog/grpc-csharp-future/).
 
-The way forward and future to support gRPC within .NET/C# lays with grpc-dotnet. Unfortunately this new implementation (exclusively using managed code and without any platform-specific requirements) is not compatible with Unity as of now. This is because Unity currently does not support HTTP2 natively until the move to .NET 6/7 is completed.
+[The way forward and future to support gRPC within .NET/C# lays with grpc-dotnet.](https://forum.unity.com/threads/unity-future-net-development-status.1092205/) Unfortunately this new implementation (exclusively using managed code and without any platform-specific requirements) is not compatible with Unity as of now. This is because Unity currently does not support HTTP2 natively until the [move to .NET 6/7](https://forum.unity.com/threads/unity-future-net-development-status.1092205/) is completed.
 
-This package uses the custom BestHTTP/2 package as HTTP2 client to replace the transport layer of grpc-dotnet and enable support of unary, client-streaming, server-streaming and bidirectional-streams across supported platforms.
+This package uses the custom [BestHTTP/2](https://assetstore.unity.com/packages/tools/network/best-http-2-155981) package as HTTP2 client to replace the transport layer of grpc-dotnet and enable support of **unary, client-streaming, server-streaming and bidirectional-streams** across supported platforms.
 
-Important: Any gRPC server implementation is not supported! Only gRPC client mode.
+**Important:** Any gRPC server implementation is not supported! Only gRPC client mode.
 
 Apart of the glue code to enable this, this package also includes a test scene and code used to verify gRPC functionality and as an example of usage of the gRPC async API.
 
@@ -23,10 +25,11 @@ Latest versions of grpc-dotnet and additional required dependencies are also inc
 
 The documentation for gRPC and it's API can be found on https://grpc.io/docs/languages/csharp/.
 
-## Setup
+## gRPC Setup
 
 After importing this package also import the latest version of **BestHTTP/2** via the package manager.
 When creating a connection with gRPC the only thing required is to provide an instance of `GRPCBestHttpHandler` to `GrpcChannelOptions.HttpHandler` when initiating a new channel.
+
 This will make sure that BestHTTP/2 is used when creating a new HTTP2 channel to the server. 
 This class will make sure that all outgoing and ingoing communication from grpc-dotnet is handled by BestHTTP/2.
 
