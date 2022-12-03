@@ -5,6 +5,7 @@
  - Verify timeout behavior.
  - Verify call cancellation for server/client streaming.
  - Verify behavior for server disconnection.
+ - Verify all supported platforms (iOS, Android, ...)
 
 ***Note:** Pull requests improving coverarge of functionality are very welcome. But in any case, if you notice the lack of some features please open a ticket.*
 
