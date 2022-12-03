@@ -15,29 +15,60 @@ namespace GRPC.NET
     {
         private static readonly string ContentType = "Content-Type";
 
+        /**
+         * This function is called by GRPC when establishing a new channel to a GRPC server.
+         * We are mapping HttpRequestMessage and HttpResponseMessage to it's BestHTTP equivalent.
+         */
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage grpcRequest, CancellationToken cancellationToken)
         {
             if (grpcRequest.Method != HttpMethod.Post)
                 throw new NotSupportedException("GRPC only supports POST method.");
 
+            //
+            // Create outgoing HTTP2 request
+            //
             HTTPRequest bestRequest = new HTTPRequest(grpcRequest.RequestUri, HTTPMethods.Post);
+
+            // Disable internal retry
             bestRequest.MaxRetries = 0;
 
+            //
+            // Prepare outgoing HEADER and HttpContent
+            //
+
+            // Copy over all request headers
             foreach (var kv in grpcRequest.Headers)
             {
                 foreach (var headerItem in kv.Value) bestRequest.AddHeader(kv.Key, headerItem);
             }
+
+            // Contained in grpcRequest.Content.Headers but we set it hardcoded here
             bestRequest.AddHeader(ContentType, "application/grpc");
 
 
+            // Create outgoing data stream
             PushPullStream outgoingDataStream = new PushPullStream("outgoing");
+
+            // BestHTTP does not perform blocking reads. Instead it will expect -1 to be returned if no data is yet
+            // available. Each time the internal loop is triggered it will try to read from the stream again to check
+            // if there is new data available.
+            // This is why we have to trigger Http2Handler on each new DATA package when the stream was flushed.
             outgoingDataStream.NonBlockingRead = true;
             bestRequest.UploadStream = outgoingDataStream;
+
+            // StreamFragmentSize will be ignored and downloaded chunks will be sent immediately.
             bestRequest.StreamChunksImmediately = true;
             bestRequest.ReadBufferSizeOverride = 0;
-            bestRequest.UseUploadStreamLength = false;
+            bestRequest.UseUploadStreamLength = false; // avoid sending content-length=0 (EOF)
+
+            // CopyToAsync can replace the underlying Stream of a HttpContent object as long as no write() call
+            // was yet initiated/completed on it. This will allow us to provide our own Stream to GRPC on which
+            // it then performs its writes on, allowing us to act on these calls.
             grpcRequest.Content.CopyToAsync(outgoingDataStream);
 
+            // Each time GRPC flushes the stream the Http2Handler will have to be triggered so it writes the available
+            // DATA package to the wire. But to get the http2Handler object we have to have an active HTTP2 connection
+            // available first so we wait for the headers to be sent to set the OnStreamFlushCallback.
             bestRequest.OnBeforeHeaderSend += _ =>
             {
                 string connectionKey = BestHTTP.Core.HostDefinition.GetKeyFor(grpcRequest.RequestUri, null);
@@ -46,29 +77,39 @@ namespace GRPC.NET
                     .GetHostDefinition(connectionKey).Find(c => (c as HTTPConnection)?.requestHandler != null) as HTTPConnection;
                 HTTP2Handler http2Handler = httpConnection?.requestHandler as HTTP2Handler;
 
+                // Signal Http2Handler each time a new DATA package should be written to the wire
                 outgoingDataStream.OnStreamFlushCallback += () => http2Handler?.SignalRunnerThread();
 
+                // This will complete when we reached EOS of the GRPC request
                 grpcRequest.Content.ReadAsStreamAsync().ContinueWith(_ =>
                 {
                     outgoingDataStream.Close();
                 }, cancellationToken);
             };
 
+
+            //
+            // Prepare HttpResponseMessage mapping incoming HEADER and DATA to forward to GRPC
+            //
             TaskCompletionSource<HttpResponseMessage> grpcResponseTask = new TaskCompletionSource<HttpResponseMessage>();
 
             PushPullStream incomingDataStream = new PushPullStream("incoming");
             HttpResponseMessage grpcResponseMessage = new HttpResponseMessage
             {
                 RequestMessage = grpcRequest,
+                // HttpContent wrapper around incoming DATA package stream
                 Content = new ServerStreamHttpContent(incomingDataStream)
             };
 
+            // Write incoming headers OR trailing headers
             bestRequest.OnHeadersReceived += (HTTPRequest _, HTTPResponse response, Dictionary<string, List<string>> headers) =>
             {
+                // Only leading header contains :status
                 bool isLeadingHeader = headers.Keys.Contains(":status");
 
                 foreach (KeyValuePair<string, List<string>> kvp in headers)
                 {
+                    // Either leading or trailing header
                     if (isLeadingHeader)
                     {
                         grpcResponseMessage.Content.Headers.TryAddWithoutValidation(kvp.Key, kvp.Value);
@@ -81,27 +122,34 @@ namespace GRPC.NET
 
                 if (isLeadingHeader)
                 {
+                    // Copy HTTP status fields
                     grpcResponseMessage.ReasonPhrase = response.Message;
                     grpcResponseMessage.StatusCode = (HttpStatusCode) response.StatusCode;
                     grpcResponseMessage.Version = new Version(response.VersionMajor, response.VersionMinor);
                 }
+                // If it is a trailing header and contains grpc-status we reached EOF
                 else if (headers.Keys.Contains("grpc-status"))
                 {
                     incomingDataStream.Close();
                 }
             };
 
+
+            // For each incoming DATA package we write data trough to GRPC
             bestRequest.OnStreamingData += (_, _, fragment, length) =>
             {
+                // Write incoming DATA package and immediately flush
                 incomingDataStream.Write(fragment, 0, length);
                 incomingDataStream.Flush();
 
+                // Complete Response on first DATA package (after HEADER arrived) to trigger GRPC
                 if (!grpcResponseTask.Task.IsCompleted)
                     grpcResponseTask.SetResult(grpcResponseMessage);
 
                 return true;
             };
 
+            // Finally send request to initiate transfer
             bestRequest.Send();
 
             return grpcResponseTask.Task;

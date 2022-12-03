@@ -44,6 +44,7 @@ namespace GRPC.NET
                 Monitor.Pulse(m_Buffer);
             }
 
+            // BestHTTP expects us to return -1 when we have no data (but have not reached EOF yet).
             if (readLength == 0 && !m_Closed)
                 return -1;
 
@@ -52,6 +53,8 @@ namespace GRPC.NET
 
         private bool ReadAvailable(int count)
         {
+            // Either we have data to read, or we got flushed (e.g. stream got closed)
+            // or we are in non blocking read mode.
             return Length >= count && m_Flushed || m_Closed || NonBlockingRead;
         }
 

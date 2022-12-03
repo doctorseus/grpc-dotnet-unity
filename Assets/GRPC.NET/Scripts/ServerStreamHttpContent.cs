@@ -18,6 +18,6 @@ namespace GRPC.NET
 
         protected override Task<Stream> CreateContentReadStreamAsync() => Task.FromResult(m_Stream);
 
-        protected override void Dispose(bool disposing) { }
+        protected override void Dispose(bool disposing) { } // is called for single grpc messages
     }
 }
