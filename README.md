@@ -1,4 +1,5 @@
 # grpc-dotnet via HTTP2 for Unity
+![Test Scene Screenshot](screenshot.png)
 
 ## TODO
  - Verify timeout behavior.
