@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "net.grpc.example.protos";
+option csharp_namespace = "TestProto";
+
+service HelloWorldService {
+  rpc hello(HelloRequest) returns (HelloResponse) { };
+  rpc helloServer(HelloRequest) returns (stream HelloResponse);
+  rpc helloClient(stream HelloRequest) returns (HelloResponse);
+  rpc helloBoth(stream HelloRequest) returns (stream HelloResponse);
+}
+
+message HelloRequest {
+  string text = 1;
+}
+
+message HelloResponse {
+  string text = 1;
+}
