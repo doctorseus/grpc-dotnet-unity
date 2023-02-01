@@ -62,7 +62,7 @@ If you are not familiar with Java, it is recommended to use https://www.jetbrain
 - Initial Release
 - Dependencies:
     - grpc.core.api.2.50.0 (netstandard2.1)
-    - grpc.net.client.2.50.0 (netstandard2.1)
+    - grpc.net.client.2.50.0 (netstandard2.1) [note: https://github.com/doctorseus/grpc-dotnet-unity/issues/2]
     - grpc.net.common.2.50.0 (netstandard2.1)
     - google.protobuf.3.21.9 (netstandard2.0)
     - system.runtime.compilerservices.unsafe.4.5.2 (netstandard2.0)
