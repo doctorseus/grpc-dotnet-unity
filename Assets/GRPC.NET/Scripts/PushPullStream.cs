@@ -18,6 +18,8 @@ namespace GRPC.NET
         private bool m_Flushed;
         private bool m_Closed;
 
+        private Exception m_Exception;
+
         public Action OnStreamFlushCallback;
 
         public PushPullStream(string name)
@@ -53,6 +55,9 @@ namespace GRPC.NET
 
         private bool ReadAvailable(int count)
         {
+            if (m_Exception != null)
+                throw m_Exception;
+
             // Either we have data to read, or we got flushed (e.g. stream got closed)
             // or we are in non blocking read mode.
             return Length >= count && m_Flushed || m_Closed || NonBlockingRead;
@@ -87,8 +92,11 @@ namespace GRPC.NET
             OnStreamFlushCallback?.Invoke();
         }
 
-        public override void Close()
+        public override void Close() => CloseWithException(null);
+
+        public void CloseWithException(Exception ex)
         {
+            m_Exception = ex;
             m_Closed = true;
             Flush();
         }

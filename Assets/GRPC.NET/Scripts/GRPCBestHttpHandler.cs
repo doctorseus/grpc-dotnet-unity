@@ -102,15 +102,16 @@ namespace GRPC.NET
             };
 
             // Write incoming headers OR trailing headers
+            bool isHeader = true;
             bestRequest.OnHeadersReceived += (HTTPRequest _, HTTPResponse response, Dictionary<string, List<string>> headers) =>
             {
-                // Only leading header contains :status
-                bool isLeadingHeader = headers.Keys.Contains(":status");
+                // If we haven't received headers yet this is a trailers only response.
+                bool trailersOnly = isHeader && headers.Keys.Contains("grpc-status");
 
                 foreach (KeyValuePair<string, List<string>> kvp in headers)
                 {
-                    // Either leading or trailing header
-                    if (isLeadingHeader)
+                    // Only use well known headers as trailing (BestHTTP does not separate them in the response)
+                    if (kvp.Key is not ("grpc-message" or "grpc-status"))
                     {
                         grpcResponseMessage.Content.Headers.TryAddWithoutValidation(kvp.Key, kvp.Value);
                     }
@@ -120,18 +121,26 @@ namespace GRPC.NET
                     }
                 }
 
-                if (isLeadingHeader)
+                // Copy HTTP status fields
+                if (isHeader)
                 {
-                    // Copy HTTP status fields
                     grpcResponseMessage.ReasonPhrase = response.Message;
                     grpcResponseMessage.StatusCode = (HttpStatusCode) response.StatusCode;
                     grpcResponseMessage.Version = new Version(response.VersionMajor, response.VersionMinor);
                 }
-                // If it is a trailing header and contains grpc-status we reached EOF
-                else if (headers.Keys.Contains("grpc-status"))
+
+                // Once we received the trailer (or if its a trailers only response) we close
+                if (trailersOnly || !isHeader)
                 {
                     incomingDataStream.Close();
                 }
+
+                // Complete Response on first HEADER package (before and DATA arrived) to trigger GRPC
+                if (!grpcResponseTask.Task.IsCompleted)
+                    grpcResponseTask.SetResult(grpcResponseMessage);
+
+                // From now on everything we get are trailers
+                isHeader = false;
             };
 
 
@@ -141,12 +150,32 @@ namespace GRPC.NET
                 // Write incoming DATA package and immediately flush
                 incomingDataStream.Write(fragment, 0, length);
                 incomingDataStream.Flush();
-
-                // Complete Response on first DATA package (after HEADER arrived) to trigger GRPC
-                if (!grpcResponseTask.Task.IsCompleted)
-                    grpcResponseTask.SetResult(grpcResponseMessage);
-
                 return true;
+            };
+
+            bestRequest.Callback += (request, response) =>
+            {
+                // We might have to handle an error when the request completed
+                if (request.State == HTTPRequestStates.Error)
+                {
+                    var ex = request.Exception ?? new Exception("Unknown error while processing grpc req/resp.");
+
+                    // If response IS NOT set we never got a response (HEADER or DATA)
+                    if (!grpcResponseTask.Task.IsCompleted)
+                    {
+                        grpcResponseTask.SetException(ex);
+                    }
+                    // If response IS set we instead throw an exception in the blocking read() thread
+                    else
+                    {
+                        incomingDataStream.CloseWithException(ex);
+                    }
+                }
+                // but in any case we want to close the stream to indicate to grpc that we are done
+                else
+                {
+                    incomingDataStream.Close();
+                }
             };
 
             // Finally send request to initiate transfer
