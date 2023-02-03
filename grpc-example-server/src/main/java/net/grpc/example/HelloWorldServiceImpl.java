@@ -1,5 +1,6 @@
 package net.grpc.example;
 
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import net.grpc.example.protos.HelloRequest;
 import net.grpc.example.protos.HelloResponse;
@@ -15,12 +16,26 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
 
     @Override
     public void hello(HelloRequest request, StreamObserver<HelloResponse> responseObserver) {
+        String req = request.getText();
         System.out.println("hello() called");
-        System.out.println(" > received " + request.getText());
+        System.out.println(" > received " + req);
 
-        String txt = "Hello " + request.getText();
-        System.out.println(" > send " + txt + " + done");
-        responseObserver.onNext(HelloResponse.newBuilder().setText(txt).build());
+        if (!req.contains("[no-response]")) {
+            if (req.contains("[exception-before]")) {
+                responseObserver.onError(Status.INVALID_ARGUMENT.withDescription("Before Response Exception").asException());
+                return;
+            }
+
+            String txt = "Hello " + req;
+            System.out.println(" > send " + txt + " + done");
+            responseObserver.onNext(HelloResponse.newBuilder().setText(txt).build());
+
+            if (req.contains("[exception-after]")) {
+                responseObserver.onError(Status.INTERNAL.withDescription("After Response Exception").asException());
+                return;
+            }
+        }
+
         responseObserver.onCompleted();
     }
 

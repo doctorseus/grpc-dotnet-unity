@@ -37,11 +37,11 @@ namespace GRPC.NET.Example
 
         void Update() => m_CallIdFactory.Update();
 
-        private void RunTestCallUnary(GrpcTestCallFactory callFactory)
+        private void RunTestCallUnary(GrpcTestCallFactory callFactory, string detail = null)
         {
             Debug.Log("RunTestCallUnary");
 
-            var call = callFactory.CreateUnary();
+            var call = callFactory.CreateUnary(detail);
             call.Call();
         }
 
@@ -55,7 +55,7 @@ namespace GRPC.NET.Example
 
         private void RunTestCallClientStreaming(GrpcTestCallFactory callFactory)
         {
-            Debug.LogWarning("RunTestCallClientStreaming");
+            Debug.Log("RunTestCallClientStreaming");
 
             var call = callFactory.CreateClientStreaming();
             call.Call();
@@ -63,7 +63,7 @@ namespace GRPC.NET.Example
 
         private void RunTestCallBiStreaming(GrpcTestCallFactory callFactory)
         {
-            Debug.LogError("RunTestCallBiStreaming");
+            Debug.Log("RunTestCallBiStreaming");
 
             var call = callFactory.CreateBiStreaming();
             call.Call();
@@ -71,9 +71,14 @@ namespace GRPC.NET.Example
 
         private class UnaryGrpcTestCall : GrpcTestCall
         {
+            private readonly string m_Detail;
+
             public UnaryGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client) : base(log, callIdFactory, factoryId, client)
-            { }
+                HelloWorldService.HelloWorldServiceClient client, string detail) : base(log, callIdFactory, factoryId,
+                client)
+            {
+                m_Detail = detail;
+            }
 
             protected override void CallImpl(CancellationToken cancelToken)
             {
@@ -81,7 +86,7 @@ namespace GRPC.NET.Example
 
                 var asyncCall = Client.helloAsync(new HelloRequest()
                 {
-                    Text = "World"
+                    Text = "World" + (m_Detail != null ? $" [{m_Detail}]" : "")
                 }, cancellationToken: cancelToken);
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
@@ -214,10 +219,10 @@ namespace GRPC.NET.Example
                 m_Logger = logger;
             }
 
-            public GrpcTestCall CreateUnary()
+            public GrpcTestCall CreateUnary(string detail = null)
             {
                 EnsureClientConnection();
-                return new UnaryGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client);
+                return new UnaryGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client, detail);
             }
 
             public GrpcTestCall CreateServerStreaming()
@@ -388,6 +393,18 @@ namespace GRPC.NET.Example
             if (GUILayout.Button("Test Bidirectional-Streaming Call"))
             {
                 RunTestCallBiStreaming(callFactory);
+            }
+            if (GUILayout.Button("Test Unary call (throw ex after resp)"))
+            {
+                RunTestCallUnary(callFactory, "exception-after");
+            }
+            if (GUILayout.Button("Test Unary call (throw ex before resp)"))
+            {
+                RunTestCallUnary(callFactory, "exception-before");
+            }
+            if (GUILayout.Button("Test Unary call (no response)"))
+            {
+                RunTestCallUnary(callFactory, "no-response");
             }
             GUILayout.EndVertical();
         }
