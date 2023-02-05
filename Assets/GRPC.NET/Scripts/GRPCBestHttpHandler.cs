@@ -16,13 +16,13 @@ namespace GRPC.NET
         private static readonly string ContentType = "Content-Type";
 
         /**
-         * This function is called by GRPC when establishing a new channel to a GRPC server.
-         * We are mapping HttpRequestMessage and HttpResponseMessage to it's BestHTTP equivalent.
+         * This function is called by gRPC when establishing a new channel to a gRPC server.
+         * We are mapping HttpRequestMessage and HttpResponseMessage to its BestHTTP equivalent.
          */
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage grpcRequest, CancellationToken cancellationToken)
         {
             if (grpcRequest.Method != HttpMethod.Post)
-                throw new NotSupportedException("GRPC only supports POST method.");
+                throw new NotSupportedException("gRPC only supports POST method.");
 
             //
             // Create outgoing HTTP2 request
@@ -62,11 +62,11 @@ namespace GRPC.NET
             bestRequest.UseUploadStreamLength = false; // avoid sending content-length=0 (EOF)
 
             // CopyToAsync can replace the underlying Stream of a HttpContent object as long as no write() call
-            // was yet initiated/completed on it. This will allow us to provide our own Stream to GRPC on which
+            // was yet initiated/completed on it. This will allow us to provide our own Stream to gRPC on which
             // it then performs its writes on, allowing us to act on these calls.
             grpcRequest.Content.CopyToAsync(outgoingDataStream);
 
-            // Each time GRPC flushes the stream the Http2Handler will have to be triggered so it writes the available
+            // Each time gRPC flushes the stream the Http2Handler will have to be triggered so it writes the available
             // DATA package to the wire. But to get the http2Handler object we have to have an active HTTP2 connection
             // available first so we wait for the headers to be sent to set the OnStreamFlushCallback.
             bestRequest.OnBeforeHeaderSend += _ =>
@@ -80,7 +80,7 @@ namespace GRPC.NET
                 // Signal Http2Handler each time a new DATA package should be written to the wire
                 outgoingDataStream.OnStreamFlushCallback += () => http2Handler?.SignalRunnerThread();
 
-                // This will complete when we reached EOS of the GRPC request
+                // This will complete when we reached EOS of the gRPC request
                 grpcRequest.Content.ReadAsStreamAsync().ContinueWith(_ =>
                 {
                     outgoingDataStream.Close();
@@ -89,7 +89,7 @@ namespace GRPC.NET
 
 
             //
-            // Prepare HttpResponseMessage mapping incoming HEADER and DATA to forward to GRPC
+            // Prepare HttpResponseMessage mapping incoming HEADER and DATA to forward to gRPC
             //
             TaskCompletionSource<HttpResponseMessage> grpcResponseTask = new TaskCompletionSource<HttpResponseMessage>();
 
@@ -135,7 +135,7 @@ namespace GRPC.NET
                     incomingDataStream.Close();
                 }
 
-                // Complete Response on first HEADER package (before DATA arrived) to trigger GRPC
+                // Complete Response on first HEADER package (before DATA arrived) to trigger gRPC
                 if (!grpcResponseTask.Task.IsCompleted)
                     grpcResponseTask.SetResult(grpcResponseMessage);
 
@@ -144,7 +144,7 @@ namespace GRPC.NET
             };
 
 
-            // For each incoming DATA package we write data trough to GRPC
+            // For each incoming DATA package we write data trough to gRPC
             bestRequest.OnStreamingData += (_, _, fragment, length) =>
             {
                 // Write incoming DATA package and immediately flush
@@ -166,6 +166,7 @@ namespace GRPC.NET
                 {
                     var ex = request.Exception ?? new Exception($"Unknown error while processing grpc req/resp (state={request.State}).");
 
+                    // If the call was aborted instead we set the exception accordingly
                     if (request.State == HTTPRequestStates.Aborted)
                     {
                         ex = new Exception("gRPC call aborted by client.");
