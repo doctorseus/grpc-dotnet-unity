@@ -1,6 +1,5 @@
 package net.grpc.example;
 
-import com.sun.media.jfxmedia.logging.Logger;
 import io.grpc.*;
 import io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.NettyServerBuilder;
@@ -18,7 +17,6 @@ public class HelloWorldServer {
     private Server server;
 
     public void start() throws IOException {
-        Logger.setLevel(Logger.DEBUG);
 
         SslContextBuilder scb = SslContextBuilder.forServer(new File("cert.pem"), new File("key.pem"));
         GrpcSslContexts.configure(scb, SslProvider.JDK);

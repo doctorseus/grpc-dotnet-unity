@@ -1,5 +1,6 @@
 package net.grpc.example;
 
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import net.grpc.example.protos.HelloRequest;
 import net.grpc.example.protos.HelloResponse;
@@ -15,12 +16,26 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
 
     @Override
     public void hello(HelloRequest request, StreamObserver<HelloResponse> responseObserver) {
+        String message = request.getText();
         System.out.println("hello() called");
-        System.out.println(" > received " + request.getText());
+        System.out.println(" > received " + message);
 
-        String txt = "Hello " + request.getText();
-        System.out.println(" > send " + txt + " + done");
-        responseObserver.onNext(HelloResponse.newBuilder().setText(txt).build());
+        if (!message.contains("[no-response]")) {
+            if (message.contains("[exception-before]")) {
+                responseObserver.onError(Status.INVALID_ARGUMENT.withDescription("Before Response Exception").asException());
+                return;
+            }
+
+            String txt = "Hello " + message;
+            System.out.println(" > send " + txt + " + done");
+            responseObserver.onNext(HelloResponse.newBuilder().setText(txt).build());
+
+            if (message.contains("[exception-after]")) {
+                responseObserver.onError(Status.INTERNAL.withDescription("After Response Exception").asException());
+                return;
+            }
+        }
+
         responseObserver.onCompleted();
     }
 
@@ -53,12 +68,20 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
 
             @Override
             public void onNext(HelloRequest request) {
-                System.out.println(" > received " + request.getText());
+                String message = request.getText();
+                System.out.println(" > received " + message);
+
+                if (message.contains("[stop]")) {
+                    responseObserver.onError(Status.INTERNAL.withDescription("Abort from Server side").asException());
+                }
+
                 count++;
             }
 
             @Override
-            public void onError(Throwable t) { }
+            public void onError(Throwable t) {
+                System.out.println(" > received error: " + t.getMessage());
+            }
 
             @Override
             public void onCompleted() {
@@ -87,7 +110,9 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
             }
 
             @Override
-            public void onError(Throwable t) { }
+            public void onError(Throwable t) {
+                System.out.println(" > received error: " + t.getMessage());
+            }
 
             @Override
             public void onCompleted() {

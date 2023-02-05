@@ -37,11 +37,11 @@ namespace GRPC.NET.Example
 
         void Update() => m_CallIdFactory.Update();
 
-        private void RunTestCallUnary(GrpcTestCallFactory callFactory)
+        private void RunTestCallUnary(GrpcTestCallFactory callFactory, string detail = null)
         {
             Debug.Log("RunTestCallUnary");
 
-            var call = callFactory.CreateUnary();
+            var call = callFactory.CreateUnary(detail);
             call.Call();
         }
 
@@ -55,7 +55,7 @@ namespace GRPC.NET.Example
 
         private void RunTestCallClientStreaming(GrpcTestCallFactory callFactory)
         {
-            Debug.LogWarning("RunTestCallClientStreaming");
+            Debug.Log("RunTestCallClientStreaming");
 
             var call = callFactory.CreateClientStreaming();
             call.Call();
@@ -63,7 +63,7 @@ namespace GRPC.NET.Example
 
         private void RunTestCallBiStreaming(GrpcTestCallFactory callFactory)
         {
-            Debug.LogError("RunTestCallBiStreaming");
+            Debug.Log("RunTestCallBiStreaming");
 
             var call = callFactory.CreateBiStreaming();
             call.Call();
@@ -71,9 +71,14 @@ namespace GRPC.NET.Example
 
         private class UnaryGrpcTestCall : GrpcTestCall
         {
+            private readonly string m_Detail;
+
             public UnaryGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client) : base(log, callIdFactory, factoryId, client)
-            { }
+                HelloWorldService.HelloWorldServiceClient client, string detail) : base(log, callIdFactory, factoryId,
+                client)
+            {
+                m_Detail = detail;
+            }
 
             protected override void CallImpl(CancellationToken cancelToken)
             {
@@ -81,11 +86,16 @@ namespace GRPC.NET.Example
 
                 var asyncCall = Client.helloAsync(new HelloRequest()
                 {
-                    Text = "World"
+                    Text = "World" + (m_Detail != null ? $" [{m_Detail}]" : "")
                 }, cancellationToken: cancelToken);
+
+                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
                 asyncCall.ResponseAsync.ContinueWith(ContinuationWithResponse, cancelToken);
+
+                // If we have no response we still complete the call here
+                asyncCall.GetAwaiter().OnCompleted(() => FireCallCompleted(PrintStatus));
             }
         }
 
@@ -104,8 +114,11 @@ namespace GRPC.NET.Example
                     Text = "World"
                 }, cancellationToken: cancelToken);
 
-                asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders);
-                ProcessServerResponses(asyncCall.ResponseStream);
+                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
+
+                asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
+
+                ProcessServerResponses(asyncCall.ResponseStream, PrintStatus);
             }
         }
 
@@ -121,10 +134,15 @@ namespace GRPC.NET.Example
 
                 var asyncCall = Client.helloClient(cancellationToken: cancelToken);
 
-                SendClientRequests(asyncCall.RequestStream);
+                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
                 asyncCall.ResponseAsync.ContinueWith(ContinuationWithResponse, cancelToken);
+
+                SendClientRequests(asyncCall.RequestStream);
+
+                // If we have no response we still complete the call here
+                asyncCall.GetAwaiter().OnCompleted(() => FireCallCompleted(PrintStatus));
             }
         }
 
@@ -140,10 +158,13 @@ namespace GRPC.NET.Example
 
                 var asyncCall = Client.helloBoth(cancellationToken: cancelToken);
 
-                SendClientRequests(asyncCall.RequestStream);
+                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
-                ProcessServerResponses(asyncCall.ResponseStream);
+
+                SendClientRequests(asyncCall.RequestStream);
+
+                ProcessServerResponses(asyncCall.ResponseStream, PrintStatus);
             }
         }
 
@@ -214,10 +235,10 @@ namespace GRPC.NET.Example
                 m_Logger = logger;
             }
 
-            public GrpcTestCall CreateUnary()
+            public GrpcTestCall CreateUnary(string detail = null)
             {
                 EnsureClientConnection();
-                return new UnaryGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client);
+                return new UnaryGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client, detail);
             }
 
             public GrpcTestCall CreateServerStreaming()
@@ -299,15 +320,15 @@ namespace GRPC.NET.Example
                 WriteLog($"Call exception: {ex.Message}");
             }
 
-            protected void FireCallCompleted()
+            protected void FireCallCompleted(Action printStatusFunc)
             {
+                printStatusFunc();
                 WriteLog("Call <b>completed</b>");
                 CallIdFactory.Completed(this);
             }
 
             protected void ContinuationWithHeaders(Task<Metadata> task)
             {
-                WriteLog("Status: " + task.Status);
                 WriteLog("Metadata: " + task.Result);
             }
 
@@ -322,11 +343,9 @@ namespace GRPC.NET.Example
                     var result = task.Result;
                     WriteLog($"Received: {result.Text}");
                 }
-
-                FireCallCompleted();
             }
 
-            protected async void ProcessServerResponses(IAsyncStreamReader<HelloResponse> responseStream)
+            protected async void ProcessServerResponses(IAsyncStreamReader<HelloResponse> responseStream,  Action printStatusFunc)
             {
                 try
                 {
@@ -342,7 +361,7 @@ namespace GRPC.NET.Example
                 }
                 finally
                 {
-                    FireCallCompleted();
+                    FireCallCompleted(printStatusFunc);
                 }
             }
 
@@ -350,18 +369,26 @@ namespace GRPC.NET.Example
             {
                 var idx = 0;
 
-                void OnTimerFunc()
+               async void OnTimerFunc()
                 {
-                    if (idx < 5)
+                    try
                     {
-                        var msg = new HelloRequest() { Text =  $"World {idx}" };
-                        WriteLog($"Send({idx}): {msg.Text}");
-                        requestStream.WriteAsync(msg);
-                        idx += 1;
+                        if (idx < 5)
+                        {
+                            var msg = new HelloRequest() { Text = $"World {idx}" };
+                            WriteLog($"Send({idx}): {msg.Text}");
+                            await requestStream.WriteAsync(msg);
+                            idx += 1;
+                        }
+                        else
+                        {
+                            await requestStream.CompleteAsync();
+                            CallIdFactory.OnTimer -= OnTimerFunc;
+                        }
                     }
-                    else
+                    catch (Exception e)
                     {
-                        requestStream.CompleteAsync();
+                        WriteLog($"Error Sending: {e.Message}");
                         CallIdFactory.OnTimer -= OnTimerFunc;
                     }
                 }
@@ -388,6 +415,18 @@ namespace GRPC.NET.Example
             if (GUILayout.Button("Test Bidirectional-Streaming Call"))
             {
                 RunTestCallBiStreaming(callFactory);
+            }
+            if (GUILayout.Button("Test Unary call (throw ex after resp)"))
+            {
+                RunTestCallUnary(callFactory, "exception-after");
+            }
+            if (GUILayout.Button("Test Unary call (throw ex before resp)"))
+            {
+                RunTestCallUnary(callFactory, "exception-before");
+            }
+            if (GUILayout.Button("Test Unary call (no response)"))
+            {
+                RunTestCallUnary(callFactory, "no-response");
             }
             GUILayout.EndVertical();
         }
