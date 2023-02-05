@@ -135,7 +135,7 @@ namespace GRPC.NET
                     incomingDataStream.Close();
                 }
 
-                // Complete Response on first HEADER package (before and DATA arrived) to trigger GRPC
+                // Complete Response on first HEADER package (before DATA arrived) to trigger GRPC
                 if (!grpcResponseTask.Task.IsCompleted)
                     grpcResponseTask.SetResult(grpcResponseMessage);
 
@@ -153,19 +153,30 @@ namespace GRPC.NET
                 return true;
             };
 
+            // When gRPC call is canceled by the application we abort the request
+            var cancellationTokenRegistration = cancellationToken.Register(() =>
+            {
+                bestRequest.Abort();
+            });
+
             bestRequest.Callback += (request, response) =>
             {
-                // We might have to handle an error when the request completed
-                if (request.State == HTTPRequestStates.Error)
+                // We might have to handle an error when his callback is called after the request completed
+                if (request.State != HTTPRequestStates.Finished)
                 {
-                    var ex = request.Exception ?? new Exception("Unknown error while processing grpc req/resp.");
+                    var ex = request.Exception ?? new Exception($"Unknown error while processing grpc req/resp (state={request.State}).");
 
-                    // If response IS NOT set we never got a response (HEADER or DATA)
+                    if (request.State == HTTPRequestStates.Aborted)
+                    {
+                        ex = new Exception("gRPC call aborted by client.");
+                    }
+
+                    // If response IS NOT set we never got a HEADER response (arrives before any DATA)
                     if (!grpcResponseTask.Task.IsCompleted)
                     {
                         grpcResponseTask.SetException(ex);
                     }
-                    // If response IS set we instead throw an exception in the blocking read() thread
+                    // If response IS set we instead throw an exception in the blocking read() and write() thread
                     else
                     {
                         incomingDataStream.CloseWithException(ex);
@@ -176,6 +187,9 @@ namespace GRPC.NET
                 {
                     incomingDataStream.Close();
                 }
+
+                // Unregister cancellation token once we are done
+                cancellationTokenRegistration.Dispose();
             };
 
             // Finally send request to initiate transfer
