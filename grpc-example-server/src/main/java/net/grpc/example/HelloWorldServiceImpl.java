@@ -16,21 +16,21 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
 
     @Override
     public void hello(HelloRequest request, StreamObserver<HelloResponse> responseObserver) {
-        String req = request.getText();
+        String message = request.getText();
         System.out.println("hello() called");
-        System.out.println(" > received " + req);
+        System.out.println(" > received " + message);
 
-        if (!req.contains("[no-response]")) {
-            if (req.contains("[exception-before]")) {
+        if (!message.contains("[no-response]")) {
+            if (message.contains("[exception-before]")) {
                 responseObserver.onError(Status.INVALID_ARGUMENT.withDescription("Before Response Exception").asException());
                 return;
             }
 
-            String txt = "Hello " + req;
+            String txt = "Hello " + message;
             System.out.println(" > send " + txt + " + done");
             responseObserver.onNext(HelloResponse.newBuilder().setText(txt).build());
 
-            if (req.contains("[exception-after]")) {
+            if (message.contains("[exception-after]")) {
                 responseObserver.onError(Status.INTERNAL.withDescription("After Response Exception").asException());
                 return;
             }
@@ -68,12 +68,20 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
 
             @Override
             public void onNext(HelloRequest request) {
-                System.out.println(" > received " + request.getText());
+                String message = request.getText();
+                System.out.println(" > received " + message);
+
+                if (message.contains("[stop]")) {
+                    responseObserver.onError(Status.INTERNAL.withDescription("Abort from Server side").asException());
+                }
+
                 count++;
             }
 
             @Override
-            public void onError(Throwable t) { }
+            public void onError(Throwable t) {
+                System.out.println(" > received error: " + t.getMessage());
+            }
 
             @Override
             public void onCompleted() {
@@ -102,7 +110,9 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
             }
 
             @Override
-            public void onError(Throwable t) { }
+            public void onError(Throwable t) {
+                System.out.println(" > received error: " + t.getMessage());
+            }
 
             @Override
             public void onCompleted() {
