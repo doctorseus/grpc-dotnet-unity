@@ -105,15 +105,22 @@ namespace GRPC.NET
             bool isHeader = true;
             bestRequest.OnHeadersReceived += (HTTPRequest _, HTTPResponse response, Dictionary<string, List<string>> headers) =>
             {
-                // If we haven't received headers yet this is a trailers only response.
+                // If we haven't received headers yet and grpc-status is included then its a trailers only response.
                 bool trailersOnly = isHeader && headers.Keys.Contains("grpc-status");
 
+                // https://github.com/grpc/grpc-dotnet/blob/master/src/Grpc.Net.Client/Internal/GrpcCall.cs#L311
                 foreach (KeyValuePair<string, List<string>> kvp in headers)
                 {
-                    // Only use well known headers as trailing (BestHTTP does not separate them in the response)
-                    if (kvp.Key is not ("grpc-message" or "grpc-status"))
+                    // Content.Headers is used for content-type and other well known headers, always populate them
+                    grpcResponseMessage.Content.Headers.TryAddWithoutValidation(kvp.Key, kvp.Value);
+
+                    // Trailer only responses have all the headers in both, metadata and trailers.
+                    // If we add them to Headers, gRPC will take care of that for us. In any other case add them
+                    // to the TrailingHeaders.
+                    if (isHeader || trailersOnly)
                     {
-                        grpcResponseMessage.Content.Headers.TryAddWithoutValidation(kvp.Key, kvp.Value);
+                        // Add headers
+                        grpcResponseMessage.Headers.TryAddWithoutValidation(kvp.Key, kvp.Value);
                     }
                     else
                     {
