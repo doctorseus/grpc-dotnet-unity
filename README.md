@@ -8,7 +8,7 @@
 
 ## Introduction
 
-**Important:** This package requires to have at least version 2.8.2 of [BestHTTP/2 by Tivadar György Nagy](https://assetstore.unity.com/packages/tools/network/best-http-2-155981) [note: https://github.com/doctorseus/grpc-dotnet-unity/issues/1]!
+**Important:** This package requires to have at least version 2.8.2 of [BestHTTP/2 by Tivadar György Nagy](https://assetstore.unity.com/packages/tools/network/best-http-2-155981) [https://github.com/doctorseus/grpc-dotnet-unity/issues/1]!
 
 Up to this point the only way to use gRPC with Unity was to use gRPC.Core. This implementation requires native platform-specific unmanaged libraries to support the HTTP2 communication and as of today is [planned to be deprecated in May 2023](https://grpc.io/blog/grpc-csharp-future/).
 
@@ -54,6 +54,17 @@ This package also includes a gradle based Java gRPC server project (`grpc-exampl
 If you are not familiar with Java, it is recommended to use https://www.jetbrains.com/idea/ to open and run the example server class `net.grpc.example.HelloWorldServer`.
 
 # Release Notes
+
+## Version 1.2.0
+- Fixed handling of metadata and trailing headers. [https://github.com/doctorseus/grpc-dotnet-unity/issues/5]
+- Dependencies:
+  - grpc.core.api.2.51.0 (netstandard2.1)
+  - grpc.net.client.2.51.0 (netstandard2.1) [note: https://github.com/doctorseus/grpc-dotnet-unity/issues/2]
+  - grpc.net.common.2.51.0 (netstandard2.1)
+  - google.protobuf.3.21.9 (netstandard2.0)
+  - system.runtime.compilerservices.unsafe.4.5.2 (netstandard2.0)
+  - microsoft.extensions.logging.abstractions.3.0.3 (netstandard2.0)
+  - system.diagnostics.diagnosticsource.4.5.1 (netstandard1.3)
 
 ## Version 1.1.0
 - Updated gRPC to version 2.51.0
