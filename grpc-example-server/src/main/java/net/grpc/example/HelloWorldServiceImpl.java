@@ -1,5 +1,6 @@
 package net.grpc.example;
 
+import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import net.grpc.example.protos.HelloRequest;
@@ -24,6 +25,12 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
             if (message.contains("[exception-before]")) {
                 responseObserver.onError(Status.INVALID_ARGUMENT.withDescription("Before Response Exception").asException());
                 return;
+            } else if (message.contains("[exception-before-meta]")) {
+                Metadata metadata = new Metadata();
+                metadata.put(Metadata.Key.of("metadata-key", Metadata.ASCII_STRING_MARSHALLER), "metadata-value");
+                metadata.put(Metadata.Key.of("metadata-key1", Metadata.ASCII_STRING_MARSHALLER), "metadata-value1");
+                responseObserver.onError(Status.INVALID_ARGUMENT.withDescription("Before Response Exception with Metadata").asException(metadata));
+                return;
             }
 
             String txt = "Hello " + message;
@@ -32,6 +39,12 @@ public class HelloWorldServiceImpl extends HelloWorldServiceGrpc.HelloWorldServi
 
             if (message.contains("[exception-after]")) {
                 responseObserver.onError(Status.INTERNAL.withDescription("After Response Exception").asException());
+                return;
+            } else if (message.contains("[exception-after-meta]")) {
+                Metadata metadata = new Metadata();
+                metadata.put(Metadata.Key.of("metadata-key", Metadata.ASCII_STRING_MARSHALLER), "metadata-value");
+                metadata.put(Metadata.Key.of("metadata-key1", Metadata.ASCII_STRING_MARSHALLER), "metadata-value1");
+                responseObserver.onError(Status.INTERNAL.withDescription("After Response Exception with Metadata").asException(metadata));
                 return;
             }
         }

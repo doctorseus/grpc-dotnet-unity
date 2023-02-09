@@ -29,9 +29,14 @@ public class HelloWorldServer {
 
         SslContext sslContext  = scb.build();
         SocketAddress socketAddress = new InetSocketAddress("127.0.0.1", PORT);
+
+        HelloWorldServiceImpl service = new HelloWorldServiceImpl();
+        ServerServiceDefinition requestInterceptor = ServerInterceptors.intercept(service, new ClientRequestInterceptor());
+        ServerServiceDefinition responseInterceptor = ServerInterceptors.intercept(requestInterceptor, new ServerResponseInterceptor());
+
         server = NettyServerBuilder.forAddress(socketAddress)
                 .sslContext(sslContext)
-                .addService(new HelloWorldServiceImpl())
+                .addService(responseInterceptor)
                 .build();
         server.start();
     }

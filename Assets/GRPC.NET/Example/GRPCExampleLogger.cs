@@ -35,7 +35,7 @@ namespace GRPC.NET.Example
         {
             const int pad = 10;
 
-            var logArea = new Rect(pad, Screen.height * (1.0f / 3.0f), Screen.width - 2 * pad, Screen.height * (2.0f / 3.0f));
+            var logArea = new Rect(pad, Screen.height * (1.0f / 2.0f), Screen.width - 2 * pad, Screen.height * (1.0f / 2.0f) - pad);
             GUILayout.BeginArea(logArea);
             GUIDisplayLog();
             GUILayout.EndArea();

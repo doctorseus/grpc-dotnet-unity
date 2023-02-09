@@ -8,6 +8,8 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using TestProto;
 using UnityEngine;
+using ColorUtility = UnityEngine.ColorUtility;
+using Metadata = Grpc.Core.Metadata;
 
 namespace GRPC.NET.Example
 {
@@ -37,11 +39,18 @@ namespace GRPC.NET.Example
 
         void Update() => m_CallIdFactory.Update();
 
-        private void RunTestCallUnary(GrpcTestCallFactory callFactory, string detail = null)
+        private static string MetadataToString(Metadata metadata)
+        {
+            return string.Join(",", metadata);
+        }
+
+        private static readonly Metadata AuthMetadata = new Metadata { { "Authorization", "Bearer f623f5c2-46a8-4bdc-9ac5-45358a615a54" } };
+
+        private void RunTestCallUnary(GrpcTestCallFactory callFactory, Metadata metadata = null, string detail = null)
         {
             Debug.Log("RunTestCallUnary");
 
-            var call = callFactory.CreateUnary(detail);
+            var call = callFactory.CreateUnary(metadata, detail);
             call.Call();
         }
 
@@ -49,7 +58,7 @@ namespace GRPC.NET.Example
         {
             Debug.Log("RunTestCallServerStreaming");
 
-            var call = callFactory.CreateServerStreaming();
+            var call = callFactory.CreateServerStreaming(AuthMetadata);
             call.Call();
         }
 
@@ -57,7 +66,7 @@ namespace GRPC.NET.Example
         {
             Debug.Log("RunTestCallClientStreaming");
 
-            var call = callFactory.CreateClientStreaming();
+            var call = callFactory.CreateClientStreaming(AuthMetadata);
             call.Call();
         }
 
@@ -65,7 +74,7 @@ namespace GRPC.NET.Example
         {
             Debug.Log("RunTestCallBiStreaming");
 
-            var call = callFactory.CreateBiStreaming();
+            var call = callFactory.CreateBiStreaming(AuthMetadata);
             call.Call();
         }
 
@@ -74,8 +83,8 @@ namespace GRPC.NET.Example
             private readonly string m_Detail;
 
             public UnaryGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client, string detail) : base(log, callIdFactory, factoryId,
-                client)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata, string detail) : base(log, callIdFactory, factoryId,
+                client, metadata)
             {
                 m_Detail = detail;
             }
@@ -87,9 +96,14 @@ namespace GRPC.NET.Example
                 var asyncCall = Client.helloAsync(new HelloRequest()
                 {
                     Text = "World" + (m_Detail != null ? $" [{m_Detail}]" : "")
-                }, cancellationToken: cancelToken);
+                }, Metadata, cancellationToken: cancelToken);
 
-                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
+                void PrintStatus()
+                {
+                    var metadata = asyncCall.GetTrailers();
+                    WriteLog($"Trailers[{metadata.Count}]: {MetadataToString(metadata)}");
+                    WriteLog($"Status: {asyncCall.GetStatus()}");
+                }
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
                 asyncCall.ResponseAsync.ContinueWith(ContinuationWithResponse, cancelToken);
@@ -102,7 +116,7 @@ namespace GRPC.NET.Example
         private class ServerStreamingGrpcTestCall : GrpcTestCall
         {
             public ServerStreamingGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client) : base(log, callIdFactory, factoryId, client)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, client, metadata)
             { }
 
             protected override void CallImpl(CancellationToken cancelToken)
@@ -112,9 +126,14 @@ namespace GRPC.NET.Example
                 var asyncCall = Client.helloServer(new HelloRequest()
                 {
                     Text = "World"
-                }, cancellationToken: cancelToken);
+                }, Metadata, cancellationToken: cancelToken);
 
-                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
+                void PrintStatus()
+                {
+                    var metadata = asyncCall.GetTrailers();
+                    WriteLog($"Trailers[{metadata.Count}]: {MetadataToString(metadata)}");
+                    WriteLog($"Status: {asyncCall.GetStatus()}");
+                }
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
 
@@ -125,16 +144,21 @@ namespace GRPC.NET.Example
         private class ClientStreamingGrpcTestCall : GrpcTestCall
         {
             public ClientStreamingGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client) : base(log, callIdFactory, factoryId, client)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, client, metadata)
             { }
 
             protected override void CallImpl(CancellationToken cancelToken)
             {
                 FireCallStarted("ClientStreaming");
 
-                var asyncCall = Client.helloClient(cancellationToken: cancelToken);
+                var asyncCall = Client.helloClient(Metadata, cancellationToken: cancelToken);
 
-                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
+                void PrintStatus()
+                {
+                    var metadata = asyncCall.GetTrailers();
+                    WriteLog($"Trailers[{metadata.Count}]: {MetadataToString(metadata)}");
+                    WriteLog($"Status: {asyncCall.GetStatus()}");
+                }
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
                 asyncCall.ResponseAsync.ContinueWith(ContinuationWithResponse, cancelToken);
@@ -149,16 +173,21 @@ namespace GRPC.NET.Example
         private class BiStreamingGrpcTestCall : GrpcTestCall
         {
             public BiStreamingGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client) : base(log, callIdFactory, factoryId, client)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, client, metadata)
             { }
 
             protected override void CallImpl(CancellationToken cancelToken)
             {
                 FireCallStarted("ClientStreaming");
 
-                var asyncCall = Client.helloBoth(cancellationToken: cancelToken);
+                var asyncCall = Client.helloBoth(Metadata, cancellationToken: cancelToken);
 
-                void PrintStatus() => WriteLog("Status: " + asyncCall.GetStatus());
+                void PrintStatus()
+                {
+                    var metadata = asyncCall.GetTrailers();
+                    WriteLog($"Trailers[{metadata.Count}]: {MetadataToString(metadata)}");
+                    WriteLog($"Status: {asyncCall.GetStatus()}");
+                }
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
 
@@ -235,28 +264,28 @@ namespace GRPC.NET.Example
                 m_Logger = logger;
             }
 
-            public GrpcTestCall CreateUnary(string detail = null)
+            public GrpcTestCall CreateUnary(Metadata metadata, string detail = null)
             {
                 EnsureClientConnection();
-                return new UnaryGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client, detail);
+                return new UnaryGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client, metadata, detail);
             }
 
-            public GrpcTestCall CreateServerStreaming()
+            public GrpcTestCall CreateServerStreaming(Metadata metadata)
             {
                 EnsureClientConnection();
-                return new ServerStreamingGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client);
+                return new ServerStreamingGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client, metadata);
             }
 
-            public GrpcTestCall CreateClientStreaming()
+            public GrpcTestCall CreateClientStreaming(Metadata metadata)
             {
                 EnsureClientConnection();
-                return new ClientStreamingGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client);
+                return new ClientStreamingGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client, metadata);
             }
 
-            public GrpcTestCall CreateBiStreaming()
+            public GrpcTestCall CreateBiStreaming(Metadata metadata)
             {
                 EnsureClientConnection();
-                return new BiStreamingGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client);
+                return new BiStreamingGrpcTestCall(m_Logger, m_IdFactory, m_FactoryId, m_Client, metadata);
             }
 
             private void EnsureClientConnection()
@@ -283,15 +312,17 @@ namespace GRPC.NET.Example
             private CancellationTokenSource m_CancelToken;
 
             protected readonly HelloWorldService.HelloWorldServiceClient Client;
+            protected readonly Metadata Metadata;
 
             public GrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata)
             {
                 Log = log;
                 FactoryId = factoryId;
                 CallIdFactory = callIdFactory;
                 (Inc, Color) = callIdFactory.CreateNext(this);
                 Client = client;
+                Metadata = metadata;
             }
 
             protected abstract void CallImpl(CancellationToken cancelToken);
@@ -322,14 +353,23 @@ namespace GRPC.NET.Example
 
             protected void FireCallCompleted(Action printStatusFunc)
             {
-                printStatusFunc();
+                try
+                {
+                    printStatusFunc();
+                }
+                catch (Exception e)
+                {
+                    // ignored
+                    // If call did not complete we can not access status or trailers
+                }
                 WriteLog("Call <b>completed</b>");
                 CallIdFactory.Completed(this);
             }
 
             protected void ContinuationWithHeaders(Task<Metadata> task)
             {
-                WriteLog("Metadata: " + task.Result);
+                var metadata = task.Result;
+                WriteLog($"Metadata[{metadata.Count}]: {string.Join(",", metadata)}");
             }
 
             protected void ContinuationWithResponse(Task<HelloResponse> task)
@@ -402,7 +442,7 @@ namespace GRPC.NET.Example
             GUILayout.BeginVertical();
             if (GUILayout.Button("Test Unary call"))
             {
-                RunTestCallUnary(callFactory);
+                RunTestCallUnary(callFactory, AuthMetadata);
             }
             if (GUILayout.Button("Test Server-Streaming Call"))
             {
@@ -418,15 +458,27 @@ namespace GRPC.NET.Example
             }
             if (GUILayout.Button("Test Unary call (throw ex after resp)"))
             {
-                RunTestCallUnary(callFactory, "exception-after");
+                RunTestCallUnary(callFactory, AuthMetadata, "exception-after");
             }
             if (GUILayout.Button("Test Unary call (throw ex before resp)"))
             {
-                RunTestCallUnary(callFactory, "exception-before");
+                RunTestCallUnary(callFactory, AuthMetadata, "exception-before");
+            }
+            if (GUILayout.Button("Test Unary call (throw ex after with meta)"))
+            {
+                RunTestCallUnary(callFactory, AuthMetadata, "exception-after-meta");
+            }
+            if (GUILayout.Button("Test Unary call (throw ex before with meta)"))
+            {
+                RunTestCallUnary(callFactory, AuthMetadata, "exception-before-meta");
             }
             if (GUILayout.Button("Test Unary call (no response)"))
             {
-                RunTestCallUnary(callFactory, "no-response");
+                RunTestCallUnary(callFactory, AuthMetadata, "no-response");
+            }
+            if (GUILayout.Button("Test Unary call (no auth token)"))
+            {
+                RunTestCallUnary(callFactory);
             }
             GUILayout.EndVertical();
         }
