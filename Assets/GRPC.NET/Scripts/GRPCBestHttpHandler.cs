@@ -136,12 +136,6 @@ namespace GRPC.NET
                     grpcResponseMessage.Version = new Version(response.VersionMajor, response.VersionMinor);
                 }
 
-                // Once we received the trailer (or if its a trailers only response) we close
-                if (trailersOnly || !isHeader)
-                {
-                    incomingDataStream.Close();
-                }
-
                 // Complete Response on first HEADER package (before DATA arrived) to trigger gRPC
                 if (!grpcResponseTask.Task.IsCompleted)
                     grpcResponseTask.SetResult(grpcResponseMessage);

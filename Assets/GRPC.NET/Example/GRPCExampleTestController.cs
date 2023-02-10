@@ -353,6 +353,7 @@ namespace GRPC.NET.Example
 
             protected void FireCallCompleted(Action printStatusFunc)
             {
+                // If call did not complete we can not access status or trailers
                 try
                 {
                     printStatusFunc();
@@ -360,7 +361,7 @@ namespace GRPC.NET.Example
                 catch (Exception e)
                 {
                     // ignored
-                    // If call did not complete we can not access status or trailers
+                    _ = e;
                 }
                 WriteLog("Call <b>completed</b>");
                 CallIdFactory.Completed(this);
