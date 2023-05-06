@@ -55,6 +55,13 @@ If you are not familiar with Java, it is recommended to use https://www.jetbrain
 
 # Release Notes
 
+## FAQ
+
+- *Are connections with **ChannelCredentials.Insecure** supported?*
+  - No, BestHTTP does not support plaintext http2 aka "h2c with prior knowledge" which is assumed when gRPC is used with insecure credentials. You will have to setup SSL on your gRPC server.
+- *Some versions of external dependencies listed below are deprecated, can I replace them with newer versions?*
+  - Yes, although gRPC is build against the versions listed below, they also work with newer versions. However, you might have to disable `Validate References` within Unity if you get a `X references strong named Y, versions has to match.` build error.
+
 ## Version 1.2.0
 - Fixed handling of metadata and trailing headers. [https://github.com/doctorseus/grpc-dotnet-unity/issues/5]
 - Dependencies:
