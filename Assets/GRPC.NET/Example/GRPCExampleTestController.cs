@@ -84,12 +84,12 @@ namespace GRPC.NET.Example
 
             public UnaryGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
                 HelloWorldService.HelloWorldServiceClient client, Metadata metadata, string detail) : base(log, callIdFactory, factoryId,
-                client, metadata)
+                false, client, metadata)
             {
                 m_Detail = detail;
             }
 
-            protected override void CallImpl(CancellationToken cancelToken)
+            protected override void CallImpl(CancellationToken cancelToken, CancellationToken _)
             {
                 FireCallStarted("Unary");
 
@@ -116,10 +116,10 @@ namespace GRPC.NET.Example
         private class ServerStreamingGrpcTestCall : GrpcTestCall
         {
             public ServerStreamingGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, client, metadata)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, true, client, metadata)
             { }
 
-            protected override void CallImpl(CancellationToken cancelToken)
+            protected override void CallImpl(CancellationToken cancelToken, CancellationToken receiveCancelToken)
             {
                 FireCallStarted("ServerStreaming");
 
@@ -137,17 +137,17 @@ namespace GRPC.NET.Example
 
                 asyncCall.ResponseHeadersAsync.ContinueWith(ContinuationWithHeaders, cancelToken);
 
-                ProcessServerResponses(asyncCall.ResponseStream, PrintStatus);
+                ProcessServerResponses(asyncCall.ResponseStream, receiveCancelToken, PrintStatus);
             }
         }
 
         private class ClientStreamingGrpcTestCall : GrpcTestCall
         {
             public ClientStreamingGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, client, metadata)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, false, client, metadata)
             { }
 
-            protected override void CallImpl(CancellationToken cancelToken)
+            protected override void CallImpl(CancellationToken cancelToken, CancellationToken _)
             {
                 FireCallStarted("ClientStreaming");
 
@@ -173,10 +173,10 @@ namespace GRPC.NET.Example
         private class BiStreamingGrpcTestCall : GrpcTestCall
         {
             public BiStreamingGrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
-                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, client, metadata)
+                HelloWorldService.HelloWorldServiceClient client, Metadata metadata) : base(log, callIdFactory, factoryId, true, client, metadata)
             { }
 
-            protected override void CallImpl(CancellationToken cancelToken)
+            protected override void CallImpl(CancellationToken cancelToken, CancellationToken receiveCancelToken)
             {
                 FireCallStarted("ClientStreaming");
 
@@ -193,7 +193,7 @@ namespace GRPC.NET.Example
 
                 SendClientRequests(asyncCall.RequestStream);
 
-                ProcessServerResponses(asyncCall.ResponseStream, PrintStatus);
+                ProcessServerResponses(asyncCall.ResponseStream, receiveCancelToken, PrintStatus);
             }
         }
 
@@ -309,31 +309,39 @@ namespace GRPC.NET.Example
             public readonly int Inc;
             public readonly Color Color;
 
+            protected readonly bool UsesReceive;
             private CancellationTokenSource m_CancelToken;
+            private CancellationTokenSource m_ReceiveCancelToken;
 
             protected readonly HelloWorldService.HelloWorldServiceClient Client;
             protected readonly Metadata Metadata;
 
-            public GrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId,
+            public GrpcTestCall(GRPCExampleLogger log, GrpcTestCallIdFactory callIdFactory, char factoryId, bool usesReceive,
                 HelloWorldService.HelloWorldServiceClient client, Metadata metadata)
             {
                 Log = log;
                 FactoryId = factoryId;
+                UsesReceive = usesReceive;
                 CallIdFactory = callIdFactory;
                 (Inc, Color) = callIdFactory.CreateNext(this);
                 Client = client;
                 Metadata = metadata;
             }
 
-            protected abstract void CallImpl(CancellationToken cancelToken);
+            protected abstract void CallImpl(CancellationToken cancelToken, CancellationToken receiveCancelToken);
 
             public void Call()
             {
                 m_CancelToken = new CancellationTokenSource();
-                CallImpl(m_CancelToken.Token);
+                m_ReceiveCancelToken = new CancellationTokenSource();
+                CallImpl(m_CancelToken.Token, m_ReceiveCancelToken.Token);
             }
 
             public void Cancel() => m_CancelToken.Cancel();
+
+            public void CancelReceive() => m_ReceiveCancelToken.Cancel();
+
+            public bool SupportsReceiveCancellation() => UsesReceive;
 
             protected void WriteLog(string msg)
             {
@@ -386,12 +394,13 @@ namespace GRPC.NET.Example
                 }
             }
 
-            protected async void ProcessServerResponses(IAsyncStreamReader<HelloResponse> responseStream,  Action printStatusFunc)
+            protected async void ProcessServerResponses(IAsyncStreamReader<HelloResponse> responseStream,
+                CancellationToken receiveCancelToken, Action printStatusFunc)
             {
                 try
                 {
                     var idx = 0;
-                    while (await responseStream.MoveNext())
+                    while (await responseStream.MoveNext(receiveCancelToken))
                     {
                         var response = responseStream.Current;
                         WriteLog($"Received({idx++}): {response.Text}");
@@ -490,9 +499,22 @@ namespace GRPC.NET.Example
             foreach(var call in callFactory.GetActiveCalls()) // FIXME: modified while reading...
             {
                 var colorHex = ColorUtility.ToHtmlStringRGBA(call.Color);
+
+                if (call.SupportsReceiveCancellation())
+                    GUILayout.BeginHorizontal();
+
                 if (GUILayout.Button($"<color=#{colorHex}>[{call.FactoryId}|{call.Inc}] Cancel</color>"))
                 {
                     call.Cancel();
+                }
+
+                if (call.SupportsReceiveCancellation())
+                {
+                    if (GUILayout.Button($"<color=#{colorHex}>[{call.FactoryId}|{call.Inc}] Cancel Receive</color>"))
+                    {
+                        call.CancelReceive();
+                    }
+                    GUILayout.EndHorizontal();
                 }
             }
             GUILayout.EndVertical();
