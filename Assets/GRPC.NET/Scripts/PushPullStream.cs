@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using Best.HTTP;
 
 namespace GRPC.NET
 {
-    public class PushPullStream : Stream
+    public class PushPullStream : Best.HTTP.Request.Upload.UploadStreamBase
     {
         private const long MAX_BUFFER_LENGTH = 5 * 1024 * 1024; // 5 MB
 
@@ -38,7 +39,7 @@ namespace GRPC.NET
                 while (!ReadAvailable(count))
                     Monitor.Wait(m_Buffer);
 
-                for (; readLength < count && Length > 0 && m_Buffer.Count > 0; readLength++)
+                for (; readLength < count && m_Buffer.Count > 0; readLength++)
                 {
                     buffer[readLength] = m_Buffer.Dequeue();
                 }
@@ -60,10 +61,12 @@ namespace GRPC.NET
 
             // Either we have data to read, or we got flushed (e.g. stream got closed)
             // or we are in non blocking read mode.
-            return Length >= count && m_Flushed || m_Closed || NonBlockingRead;
+            return m_Buffer.Count >= count && m_Flushed || m_Closed || NonBlockingRead;
         }
 
-        public override long Length => m_Buffer.Count;
+        // avoid sending content-length=0 (EOF) by using -2 for chunked encoding
+        public override long Length => -2;
+
         public override long Position
         {
             get => 0;
@@ -74,7 +77,7 @@ namespace GRPC.NET
         {
             lock (m_Buffer)
             {
-                while (Length >= MAX_BUFFER_LENGTH)
+                while (m_Buffer.Count >= MAX_BUFFER_LENGTH)
                     Monitor.Wait(m_Buffer);
 
                 for (var i = offset; i < offset + count; i++) m_Buffer.Enqueue(buffer[i]);
@@ -103,6 +106,17 @@ namespace GRPC.NET
 
         public override long Seek(long offset, SeekOrigin origin) => throw new System.NotSupportedException();
         public override void SetLength(long value) => throw new System.NotSupportedException();
+
+        public override void BeforeSendHeaders(HTTPRequest request)
+        {
+            // Each time gRPC flushes the stream the Http2Handler will have to be triggered so it writes the available
+            // DATA package to the wire. But to get the http2Handler object we have to have an active HTTP2 connection
+            // available first so we wait for the headers to be sent to set the OnStreamFlushCallback.
+
+            // Signal Http2Handler each time a new DATA package should be written to the wire
+            OnStreamFlushCallback += () => Signaler.SignalThread();
+        }
+
         public override bool CanRead => true;
         public override bool CanSeek => false;
         public override bool CanWrite => true;
